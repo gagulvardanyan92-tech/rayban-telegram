@@ -155,7 +155,7 @@ $('makeTransfer').onclick=async()=>{const password=$('transferPassword').value;i
    const payload={...credentials,session:client.session.save(),created:Date.now(),v:1};
    const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},await keyFor(password,salt),new TextEncoder().encode(JSON.stringify(payload)));
    const token=[bytes64(salt),bytes64(iv),bytes64(new Uint8Array(encrypted))].join('.');
-   const base=new URL(location.href);base.search='?v=5';base.hash='import='+token;
+   const base=new URL(location.href);base.search='?v=6';base.hash='import='+token;
    $('transferLink').value=base.href;$('transferResult').hidden=false;$('transferPassword').value='';status('Ссылка готова. Добавь её в Meta AI → Web Apps.');
  }catch{status('Не удалось создать ссылку. Открой приложение через HTTPS в обычном браузере.',true);}finally{b.disabled=false;}};
 $('copyTransfer').onclick=async()=>{try{await navigator.clipboard.writeText($('transferLink').value);status('Скопировано. Пароль помни отдельно.');}

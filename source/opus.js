@@ -9,17 +9,23 @@ export async function voiceBlob(blob){
    for(let i=1;i<length;i++){if(offset+i>=data.length)throw new Error('Обрезан WebM');value=value*256+data[offset+i];unknown=unknown&&data[offset+i]===255;}
    return {value,length,unknown};}
  const masters=new Set([0x18538067,0x1654ae6b,0xae,0x1f43b675,0xa0]);
- function walk(start,end,track=null,depth=0){if(depth>8)throw new Error('Неподдерживаемый WebM');
-   for(let p=start;p<end;){const id=vint(p,true);p+=id.length;const size=vint(p);p+=size.length;
+ // Unknown-size live Clusters end at the next Segment-level element. They are
+ // siblings, not children: treating them as children fails after a few seconds.
+ const segmentChildren=new Set([0x1f43b675,0x1549a966,0x1654ae6b,0x114d9b74,0x1c53bb6b,0x1941a469,0x1043a770,0x1254c367]);
+ function walk(start,end,track=null,depth=0,liveCluster=false){if(depth>8)throw new Error('Неподдерживаемая структура WebM');
+   for(let p=start;p<end;){const elementStart=p,id=vint(p,true);
+     if(liveCluster&&segmentChildren.has(id.value))return elementStart;
+     p+=id.length;const size=vint(p);p+=size.length;
      const stop=size.unknown?end:p+size.value;if(stop>end||stop<p)throw new Error('Обрезан WebM');
-     if(masters.has(id.value)){const entry=id.value===0xae?{}:track;walk(p,stop,entry,depth+1);if(id.value===0xae)tracks.push(entry);}
+     if(masters.has(id.value)){const entry=id.value===0xae?{}:track;
+       p=walk(p,stop,entry,depth+1,size.unknown&&id.value===0x1f43b675);if(id.value===0xae)tracks.push(entry);continue;}
      else if(track&&id.value===0xd7){let n=0;for(const x of data.subarray(p,stop))n=n*256+x;track.number=n;}
      else if(track&&id.value===0x86)track.codec=new TextDecoder().decode(data.subarray(p,stop));
      else if(track&&id.value===0x63a2)track.head=data.slice(p,stop);
      else if(id.value===0xa3||id.value===0xa1){const n=vint(p);const flags=data[p+n.length+2];
        if(flags&6)throw new Error('Этот формат записи (WebM lacing) пока не поддерживается.');
        packets.push({track:n.value,bytes:data.slice(p+n.length+3,stop)});}
-     p=stop;}}
+     p=stop;}return end;}
  walk(0,data.length);const track=tracks.find(t=>t.codec==='A_OPUS');
  const audio=packets.filter(p=>p.track===track?.number).map(p=>p.bytes);
  if(!track?.head||!audio.length)throw new Error('В записи не найден звук Opus.');

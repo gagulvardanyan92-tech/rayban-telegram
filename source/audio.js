@@ -64,7 +64,7 @@ export function installAudio({context,status,show,append}){
      started=Date.now();duration=0;recorder.start(250);recording=true;
      timer=setInterval(()=>{duration=Math.max(1,Math.ceil((Date.now()-started)/1000));$('recordStatus').textContent='Идёт запись: '+duration+' / 120 сек.';if(duration>=120)stopRecording();},250);
    }catch(err){releaseMic();$('recordStatus').textContent=/NotAllowed|Security/.test(err.name)?'Доступ к микрофону не предоставлен. Проверь разрешение сайта. Если очки не поддерживают запись в Web Apps, понадобится отдельное приложение для телефона.':
-     /NotFound/.test(err.name)?'Браузер не нашёл микрофон.':'Не удалось начать запись: '+String(err.message).slice(0,120);}
+     /NotFound/.test(err.name)?'Браузер не предоставил ни одного микрофона (NotFoundError). На очках системная диктовка не даёт веб-приложению доступ к записи. Для записи может потребоваться отдельная интеграция с телефоном.':'Не удалось начать запись: '+String(err.message).slice(0,120);}
    finally{if(version===serial){requesting=false;controls();}}};
  function stopRecording(){if(!recording||!recorder)return;duration=Math.max(1,Math.ceil((Date.now()-started)/1000));recording=false;requesting=true;controls();recorder.stop();releaseMic();clearInterval(timer);}
  $('stopRecord').onclick=stopRecording;
