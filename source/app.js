@@ -2,10 +2,11 @@ import {TelegramClient, Api} from 'telegram';
 import {StringSession} from 'telegram/sessions';
 import {Logger} from 'telegram/extensions/Logger';
 import {installKeyboard} from './keyboard';
+import {installAudio} from './audio';
 
 const $ = id => document.getElementById(id);
 const storageKey = 'tg-glasses-session-v1';
-let client, credentials, dialogs=[], activeDialog=null, messages=[], demo=false;
+let client, credentials, dialogs=[], activeDialog=null, messages=[], demo=false,voiceUI=null;
 let screen='setup', authPending=null, importing=null, refreshing=false, sending=false, generation=0;
 let draft='', filterValue='',transferHash='';
 const drafts=new Map();
@@ -15,7 +16,8 @@ const demoMessages=[{id:1,out:false,message:'Привет! Это демонст
  {id:2,out:true,message:'Нажми на поле ответа: в очках должна открыться системная диктовка.',date:Math.floor(Date.now()/1000)-60}];
 
 function status(text='',error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
-function show(name){screen=name;for(const id of ['setup','auth','chats','conversation','settings','importView'])$(id).hidden=id!==name;
+function show(name){if((screen==='voiceView'&&name!=='voiceView')||(screen==='conversation'&&name!=='conversation'))voiceUI?.leave();
+ screen=name;for(const id of ['setup','auth','chats','conversation','settings','importView','voiceView'])$(id).hidden=id!==name;
  $('brand').hidden=name==='conversation';$('footnote').hidden=['conversation','chats'].includes(name);}
 function errorText(e){const code=String(e?.errorMessage||e?.message||'Ошибка соединения');
  if(/FLOOD_WAIT/.test(code))return 'Telegram просит подождать '+(code.match(/\d+/)?.[0]||'несколько')+' секунд. Не запрашивай код повторно.';
@@ -69,6 +71,7 @@ $('setupForm').addEventListener('submit',async e=>{e.preventDefault();if($('logi
 });
 
 function summary(message){if(!message)return 'Нет сообщений';if(message.message)return message.message;
+ const audio=message.media?.document?.attributes?.find(a=>a.className==='DocumentAttributeAudio');if(audio)return audio.voice?'[Голосовое сообщение]':'[Аудио]';
  const kind=message.media?.className||'';return /Photo/.test(kind)?'[Фото]':/Document/.test(kind)?'[Файл или голосовое сообщение]':'[Служебное сообщение]';}
 function renderDialogs(){const term=filterValue.toLocaleLowerCase('ru');const list=$('chatList');list.replaceChildren();
  const filtered=dialogs.filter(d=>String(d.title||'Без названия').toLocaleLowerCase('ru').includes(term));
@@ -87,12 +90,13 @@ $('refresh').onclick=refreshDialogs;
 for(const event of ['input','change','blur','compositionend'])$('filter').addEventListener(event,()=>{filterValue=$('filter').value;renderDialogs();});
 $('demo').onclick=()=>{demo=true;credentials=null;$('filter').value='';filterValue='';enterChats();};
 function renderMessages(preserve=false){const thread=$('thread'),oldHeight=thread.scrollHeight,oldTop=thread.scrollTop;
+ voiceUI?.beginRender();
  const atBottom=oldHeight-oldTop-thread.clientHeight<70;thread.replaceChildren();
  for(const m of messages){const article=document.createElement('article');article.className='message'+(m.out?' own':'');
    const meta=document.createElement('div');meta.className='meta';
    const name=m.out?'Ты':activeDialog?.isGroup||activeDialog?.isChannel?'Участник':'Собеседник';
    const when=m.date?new Date(m.date*1000).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}):'';
-   meta.textContent=name+(when?' · '+when:'');const p=document.createElement('p');p.textContent=summary(m);article.append(meta,p);thread.append(article);}
+   meta.textContent=name+(when?' · '+when:'');const p=document.createElement('p');p.textContent=summary(m);article.append(meta,p);voiceUI?.decorate(m,article);thread.append(article);}
  if(!messages.length){const p=document.createElement('p');p.textContent='Сообщений пока нет.';thread.append(p);}
  if(!preserve||atBottom)thread.scrollTop=thread.scrollHeight;else thread.scrollTop=oldTop;
 }
@@ -102,7 +106,7 @@ async function openChat(dialog){if(screen==='conversation')return;activeDialog=d
  try{const result=demo?demoMessages.map(m=>({...m})):Array.from(await client.getMessages(dialog.inputEntity,{limit:30})).reverse();
    if(token!==generation)return;messages=result;renderMessages();status(demo?'Пример переписки.':'');
  }catch(err){if(token===generation)status(errorText(err),true);}finally{if(token===generation)$('send').disabled=false;}}
-function back(){if(sending)return status('Подожди завершения отправки.');generation++;activeDialog=null;show('chats');status(demo?'Демонстрация.':'');$('filter').value=filterValue;renderDialogs();}
+function back(){if(sending||voiceUI?.isBusy())return status('Подожди завершения отправки.');generation++;activeDialog=null;show('chats');status(demo?'Демонстрация.':'');$('filter').value=filterValue;renderDialogs();}
 $('back').onclick=back;
 for(const event of ['input','change','blur','compositionend'])$('reply').addEventListener(event,()=>{const value=$('reply').value;
  draft=value;if(activeDialog)drafts.set(String(activeDialog.id),value);});
@@ -151,7 +155,7 @@ $('makeTransfer').onclick=async()=>{const password=$('transferPassword').value;i
    const payload={...credentials,session:client.session.save(),created:Date.now(),v:1};
    const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},await keyFor(password,salt),new TextEncoder().encode(JSON.stringify(payload)));
    const token=[bytes64(salt),bytes64(iv),bytes64(new Uint8Array(encrypted))].join('.');
-   const base=new URL(location.href);base.search='';base.hash='import='+token;
+   const base=new URL(location.href);base.search='?v=5';base.hash='import='+token;
    $('transferLink').value=base.href;$('transferResult').hidden=false;$('transferPassword').value='';status('Ссылка готова. Добавь её в Meta AI → Web Apps.');
  }catch{status('Не удалось создать ссылку. Открой приложение через HTTPS в обычном браузере.',true);}finally{b.disabled=false;}};
 $('copyTransfer').onclick=async()=>{try{await navigator.clipboard.writeText($('transferLink').value);status('Скопировано. Пароль помни отдельно.');}
@@ -173,7 +177,7 @@ $('logout').onclick=async()=>{if(!confirm('Завершить эту сесси�
    credentials=null;client=null;dialogs=[];messages=[];drafts.clear();$('transferLink').value='';show('setup');status('Сессия завершена.');
  }catch(err){status(errorText(err)+' Для завершения используй Telegram → Настройки → Устройства.',true);}};
 document.addEventListener('keydown',e=>{if(e.isComposing||['INPUT','TEXTAREA'].includes(document.activeElement?.tagName))return;
- if(e.key==='Escape'){if(screen==='conversation'){e.preventDefault();back();}else if(screen==='settings'){e.preventDefault();$('settingsBack').click();}return;}
+ if(e.key==='Escape'){if(screen==='conversation'){e.preventDefault();back();}else if(screen==='voiceView'){e.preventDefault();$('voiceBack').click();}else if(screen==='settings'){e.preventDefault();$('settingsBack').click();}return;}
  if(!['ArrowDown','ArrowUp','ArrowLeft','ArrowRight'].includes(e.key))return;
  if(document.activeElement===$('thread'))return;
  const visible=Array.from(document.querySelectorAll('button,input,textarea,a,[tabindex="0"]')).filter(el=>el.getClientRects().length&&!el.disabled);
@@ -193,4 +197,6 @@ async function init(){show('setup');if(!window.crypto?.subtle)return status('Н�
    finally{$('login').disabled=false;}}
 }
 installKeyboard();
+voiceUI=installAudio({context:()=>({client,dialog:activeDialog,screen,demo,busy:sending}),status,show,
+ append:message=>{messages.push(message);renderMessages();}});
 init();

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src wss://*.web.telegram.org https://*.web.telegram.org; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src wss://*.web.telegram.org https://*.web.telegram.org; media-src blob:; img-src data:; base-uri 'none'; form-action 'none'">
 <title>Чаты в очках · Telegram</title>
 <style>
 :root{color-scheme:dark;font-family:Arial,sans-serif;--bg:#000;--surface:#141c24;--text:#fff;--muted:#bdcbd8;--accent:#8ad8ff;--border:#516270}
@@ -11,10 +11,11 @@
 #keyboard{position:fixed;inset:0;z-index:2000;background:#000;overflow:auto;padding:12px;max-width:600px;margin:auto;border:2px solid var(--border)}#keyboard h2{font-size:22px;margin:0 0 6px}#keyboardPreview{min-height:48px;font-size:22px;padding:8px}#keyboardCursor{font-size:14px;color:var(--muted)}#keyboard .row{gap:8px;margin:8px 0}#keyboard button{min-height:46px;padding:6px;font-size:18px;border-radius:8px}#keyboard [aria-pressed=true]{border-color:var(--accent);color:var(--accent)}#keyboardKeys{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}#keyboardKeys button{font-size:24px;min-height:46px}#keyboardRevealLabel{font-size:15px;margin:6px 0}#keyboard .primary{color:#001826}#keyboardControls button{font-size:17px}#keyboardCancel{max-width:100px}#keyboardNative{font-size:16px}
 #keyboard{padding:8px}#keyboard h2{line-height:26px;margin-bottom:4px}#keyboardPreview{min-height:44px;padding:6px}#keyboardCursor{font-size:12px;line-height:17px}#keyboard .row{gap:6px;margin:6px 0}#keyboard button{min-height:44px}#keyboardKeys{grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}#keyboardKeys button{min-height:44px}#keyboardRevealLabel{font-size:14px;line-height:20px;margin:3px 0}@media(max-width:480px){#keyboardKeys{grid-template-columns:repeat(6,minmax(0,1fr))}}
 .text-entry{text-align:left;font-weight:normal;overflow-wrap:anywhere;white-space:pre-wrap}#keyboardPreview{background:var(--surface);border:2px solid var(--border);border-radius:10px;overflow-wrap:anywhere;max-height:88px;overflow:auto;white-space:pre-wrap}
+#recordPreview{width:100%;margin:10px 0}#recordStatus{padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;min-height:60px;overflow-wrap:anywhere}#audioStatus{font-size:15px;color:var(--accent);min-height:20px}#voiceView .stack button{margin:6px 0}#voiceView h2{margin-top:0}
 </style>
 </head>
 <body><main>
-<header id="brand"><div><h1>Чаты в очках</h1><small>Telegram · экспериментальная версия 4 · кнопочный ввод</small></div></header>
+<header id="brand"><div><h1>Чаты в очках</h1><small>Telegram · экспериментальная версия 5 · голосовые</small></div></header>
 <div id="status" role="status" aria-live="polite"></div>
 <section id="setup" class="stack">
 <p>Первый вход сделай на телефоне. Затем перенеси вход в очки через ссылку с паролем.</p>
@@ -38,8 +39,19 @@
 <section id="conversation" hidden>
 <header><button class="back" id="back">← Чаты</button><h2 id="chatTitle"></h2></header>
 <div id="thread" role="log" aria-label="Сообщения" tabindex="0"></div>
+<div id="audioStatus" role="status"></div>
 <label for="reply">Ответ текстом</label><textarea id="reply" rows="1" placeholder="Нажми, чтобы набрать ответ"></textarea>
-<div class="row"><button id="loadOlder">Раньше</button><button id="send" class="primary">Отправить</button></div>
+<div class="row"><button id="loadOlder">Раньше</button><button id="voiceButton">Голосовое</button><button id="send" class="primary">Отправить</button></div>
+</section>
+<section id="voiceView" hidden>
+<h2>Голосовое сообщение</h2><p id="voiceRecipient"></p>
+<p id="recordStatus" role="status" aria-live="polite"></p><p id="micLabel" class="muted"></p>
+<div class="row"><button id="startRecord" class="primary">Начать запись</button><button id="stopRecord" disabled>Стоп</button></div>
+<audio id="recordPreview" controls hidden preload="metadata"></audio>
+<button id="previewVoice" hidden>Прослушать запись</button>
+<div class="row"><button id="discardVoice">Удалить запись</button><button id="sendVoice" class="primary" disabled>Отправить голосовое</button></div>
+<button id="voiceBack">← К переписке</button>
+<p class="muted">До 2 минут. Запись только после нажатия; отправка только отдельной кнопкой. Источник микрофона определяет браузер.</p>
 </section>
 <section id="settings" hidden>
 <h2>Перенос в очки</h2><p>Задай пароль, создай ссылку и добавь её в Web Apps через Meta AI. В очках введи этот пароль.</p>
@@ -52,7 +64,8 @@
 <section id="importView" hidden>
 <h2>Подключить Telegram</h2><p>Введи пароль, который ты задал на телефоне при создании ссылки.</p><form id="importForm"><label for="importPassword">Пароль переноса</label><input id="importPassword" type="password" autocomplete="off" required><label class="check"><input id="importRemember" type="checkbox">Сохранить вход в очках</label><button class="primary" id="importSubmit" type="submit" style="margin-top:12px">Открыть чаты</button></form><button id="importCancel" style="margin-top:12px">Отмена</button>
 </section>
-<footer id="footnote">Текстовые облачные чаты. Секретные чаты, звонки и воспроизведение вложений пока не поддерживаются.</footer>
+<footer id="footnote">Облачные чаты и аудио. Запись зависит от доступа браузера к микрофону. Секретные чаты и звонки не поддерживаются.</footer>
+<audio id="voicePlayer" preload="none" hidden></audio>
 </main>
 <div id="keyboard" role="dialog" aria-modal="true" aria-labelledby="keyboardTitle" hidden>
 <h2 id="keyboardTitle">Ввод текста</h2>
