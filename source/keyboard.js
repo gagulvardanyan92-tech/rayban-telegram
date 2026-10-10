@@ -1,11 +1,17 @@
 // Local on-screen input. It never submits a form or sends a message.
 export function installKeyboard(){
  const panel=document.getElementById('keyboard'),preview=document.getElementById('keyboardPreview'),grid=document.getElementById('keyboardKeys');
- const main=document.querySelector('main');let target=null,original='',value='',position=0,layout='ru',upper=false;
+ const main=document.querySelector('main'),proxies=new Map();let target=null,original='',value='',position=0,layout='ru',upper=false;
  const layouts={ru:'йцукенгшщзхъфывапролджэячсмитьбюё',en:'qwertyuiopasdfghjklzxcvbnm',num:'1234567890+-().',symbols:'!@#$%^&*()_+-=[]{};:,.?/\\|~`<>"\''};
- function echo(){preview.type=target?.type==='password'&&!document.getElementById('keyboardReveal').checked?'password':'text';preview.value=value;
+ function echo(){const masked=target?.type==='password'&&!document.getElementById('keyboardReveal').checked;
+   const shown=masked?'•'.repeat(value.length):value;preview.textContent=shown.slice(0,position)+'│'+shown.slice(position);
    document.getElementById('keyboardCursor').textContent='Позиция: '+position+' / '+value.length;
-   try{preview.setSelectionRange(position,position);}catch{} }
+ }
+ function sync(){for(const [field,button] of proxies){const label=document.querySelector('label[for="'+field.id+'"]')?.textContent||'Текст';
+   const shown=field.type==='password'?'•'.repeat(field.value.length):field.value;
+   const text=shown||'Ввести текст…';if(button.textContent!==text)button.textContent=text;
+   button.setAttribute('aria-label',label+': '+(field.value?'изменить':'ввести'));if(button.disabled!==field.disabled)button.disabled=field.disabled;
+ }}
  function insert(text){value=value.slice(0,position)+text+value.slice(position);position+=text.length;echo();}
  function render(){grid.replaceChildren();for(const char of layouts[layout]){const b=document.createElement('button');b.type='button';b.className='key';
    b.textContent=upper?char.toLocaleUpperCase('ru'):char;b.onclick=()=>insert(b.textContent);grid.append(b);}
@@ -13,9 +19,10 @@ export function installKeyboard(){
    document.getElementById('keyboardCase').setAttribute('aria-pressed',String(upper));}
  function close(commit=true,native=false){if(!target)return;const field=target;field.value=commit?value:original;
    field.dispatchEvent(new Event('input',{bubbles:true}));field.dispatchEvent(new Event('change',{bubbles:true}));
-   panel.hidden=true;main.inert=false;target=null;preview.value='';value='';original='';document.getElementById('keyboardReveal').checked=false;
-   if(native){field.readOnly=false;field.addEventListener('blur',()=>{field.readOnly=true;},{once:true});}
-   field.focus();}
+   panel.hidden=true;main.inert=false;target=null;preview.textContent='';value='';original='';document.getElementById('keyboardReveal').checked=false;
+   const button=proxies.get(field);sync();
+   if(native){field.hidden=false;field.readOnly=false;button.hidden=true;field.addEventListener('blur',()=>{field.readOnly=true;field.hidden=true;button.hidden=false;sync();},{once:true});field.focus();}
+   else button?.focus();}
  function open(field){target=field;original=field.value;value=original;position=value.length;
    const label=field.id?document.querySelector('label[for="'+field.id+'"]'):null;
    document.getElementById('keyboardTitle').textContent=label?.textContent||'Ввод текста';
@@ -25,10 +32,14 @@ export function installKeyboard(){
    document.getElementById('keyboardRevealLabel').hidden=field.type!=='password';
    panel.hidden=false;main.inert=true;render();echo();grid.querySelector('button')?.focus();}
  for(const field of main.querySelectorAll('input:not([type="checkbox"]),textarea:not([readonly])')){
-   field.readOnly=true;field.setAttribute('aria-haspopup','dialog');
-   field.addEventListener('click',e=>{if(!field.readOnly)return;e.preventDefault();open(field);});
-   field.addEventListener('keydown',e=>{if(field.readOnly&&(e.key==='Enter'||e.key===' ')){e.preventDefault();open(field);}});
+   field.readOnly=true;field.hidden=true;
+   const button=document.createElement('button');button.type='button';button.className='text-entry';button.setAttribute('aria-haspopup','dialog');
+   button.onclick=()=>open(field);field.after(button);proxies.set(field,button);
+   const label=document.querySelector('label[for="'+field.id+'"]');if(label)label.onclick=e=>{if(!field.hidden)return;e.preventDefault();open(field);};
+   field.addEventListener('input',sync);field.addEventListener('change',sync);
  }
+ sync();
+ new MutationObserver(sync).observe(main,{subtree:true,attributes:true,attributeFilter:['hidden','type','disabled']});
  panel.querySelectorAll('[data-layout]').forEach(b=>b.onclick=()=>{layout=b.dataset.layout;render();});
  document.getElementById('keyboardCase').onclick=()=>{upper=!upper;render();};
  document.getElementById('keyboardDelete').onclick=()=>{if(position>0){value=value.slice(0,position-1)+value.slice(position);position--;}echo();};
