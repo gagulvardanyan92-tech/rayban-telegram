@@ -1,4 +1,5 @@
 import {Api} from 'telegram';
+import {CustomFile} from 'telegram/client/uploads';
 import {voiceBlob} from './opus';
 export function installAudio({context,status,show,append}){
  const $=id=>document.getElementById(id),player=$('voicePlayer'),preview=$('recordPreview');
@@ -75,7 +76,10 @@ export function installAudio({context,status,show,append}){
  $('voiceBack').onclick=()=>{if(busy)return;leave();show('conversation');};
  $('sendVoice').onclick=async()=>{if(!draft||busy||!chat)return;const c=context();if(c.dialog!==chat)return;
    busy=true;preview.pause();controls();$('recordStatus').textContent='Отправляю голосовое…';
-   try{const ext=/mp4/.test(draft.type)?'m4a':'ogg';const file=new File([draft],'voice.'+ext,{type:draft.type});
+   try{const ext=/mp4/.test(draft.type)?'m4a':'ogg';
+     // GramJS routes native File objects through its generic media conversion.
+     const bytes=Buffer.from(await draft.arrayBuffer());
+     const file=new CustomFile('voice.'+ext,bytes.length,'',bytes);
      const sent=await c.client.sendFile(chat.inputEntity,{file,voiceNote:true,workers:1,attributes:[new Api.DocumentAttributeAudio({voice:true,duration})],
        progressCallback:progress=>{$('recordStatus').textContent='Отправляю: '+Math.round(Number(progress)*100)+'%';}});
      append(sent);busy=false;leave();show('conversation');status('Голосовое отправлено.');
