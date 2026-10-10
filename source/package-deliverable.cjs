@@ -7,7 +7,7 @@ const script=fs.readFileSync(path.join(__dirname,'dist/app.js'),'utf8').replace(
 const html=fs.readFileSync(path.join(__dirname,'template.html'),'utf8').replace('/*APP_SCRIPT*/',()=>script);
 fs.writeFileSync(path.join(out,'index.html'),html);
 const source=path.join(out,'source');fs.mkdirSync(source,{recursive:true});
-for(const file of ['app.js','template.html','browser-crypto.cjs','webpack.config.cjs','package-deliverable.cjs','package.json','package-lock.json'])fs.copyFileSync(path.join(__dirname,file),path.join(source,file));
+for(const file of ['app.js','keyboard.js','template.html','browser-crypto.cjs','webpack.config.cjs','package-deliverable.cjs','package.json','package-lock.json'])fs.copyFileSync(path.join(__dirname,file),path.join(source,file));
 let licenses='Third-party notices. Build dependencies are included for completeness.\n\n';
 function collect(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){if(!entry.isDirectory())continue;
  const folder=path.join(dir,entry.name);if(entry.name.startsWith('@')){collect(folder);continue;}

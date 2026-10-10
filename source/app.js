@@ -1,6 +1,7 @@
 import {TelegramClient, Api} from 'telegram';
 import {StringSession} from 'telegram/sessions';
 import {Logger} from 'telegram/extensions/Logger';
+import {installKeyboard} from './keyboard';
 
 const $ = id => document.getElementById(id);
 const storageKey = 'tg-glasses-session-v1';
@@ -191,4 +192,5 @@ async function init(){show('setup');if(!window.crypto?.subtle)return status('Н�
    }catch(err){show('setup');status(errorText(err)+' Можно войти заново.',true);}
    finally{$('login').disabled=false;}}
 }
+installKeyboard();
 init();
